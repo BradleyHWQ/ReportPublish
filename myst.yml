@@ -1,0 +1,18 @@
+# AUTO-GENERATED: scripts/update_toc.py
+# Edit content files, not this navigation file.
+version: 1
+project:
+  id: 8f251e0d-3ef1-446f-b54b-5921849eaec0
+  title: Quant Research Notebook Library
+  toc:
+    - file: index.md
+    - file: weekly_discussion/overview.md
+      children:
+        - file: weekly_discussion/2026-03-26/index.md
+          children:
+            - file: weekly_discussion/2026-03-26/2026-03-26_level2_dl_backtest.ipynb
+    - file: projects/overview.md
+      children:
+        - file: projects/MultiFeatureDL/index.md
+site:
+  template: book-theme

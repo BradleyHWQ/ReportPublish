@@ -1,0 +1,4 @@
+_build/
+.npm-cache/
+scripts/__pycache__/
+*.pyc
