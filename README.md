@@ -1,5 +1,3 @@
-# README.md
-
 # ReportPublish
 
 **中文**：一个用于便捷渲染和发布 Jupyter Notebook 为网页的轻量仓库，方便在内部局域网中进行研究结果的交流、共享与查阅。

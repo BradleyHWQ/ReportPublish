@@ -1,5 +1,3 @@
-# PUBLISHING.md
-
 # Publishing Guide
 
 本文件说明如何使用本仓库进行 notebook 发布。
