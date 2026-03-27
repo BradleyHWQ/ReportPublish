@@ -15,11 +15,13 @@ import socket
 
 import nbformat
 from bs4 import BeautifulSoup
+import yaml
 
 from update_toc import update_toc
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+SITE_CONFIG_PATH = REPO_ROOT / "site_config.yml"
 NPM_CACHE_DIR = REPO_ROOT / ".npm-cache"
 COPY_EXCLUDES = {
     ".git",
@@ -131,10 +133,208 @@ def hide_code_inputs(root: Path) -> int:
 def sync_html_back(build_root: Path) -> None:
     source_html = build_root / "_build" / "html"
     target_html = REPO_ROOT / "_build" / "html"
-    if target_html.exists():
-        shutil.rmtree(target_html)
+    temp_target = REPO_ROOT / "_build" / "html.__new__"
+    backup_target = REPO_ROOT / "_build" / "html.__old__"
+
+    if temp_target.exists():
+        shutil.rmtree(temp_target, ignore_errors=True)
+    if backup_target.exists():
+        shutil.rmtree(backup_target, ignore_errors=True)
+
     target_html.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(source_html, target_html)
+    shutil.copytree(source_html, temp_target)
+
+    if target_html.exists():
+        target_html.rename(backup_target)
+    temp_target.rename(target_html)
+
+    if backup_target.exists():
+        shutil.rmtree(backup_target, ignore_errors=True)
+
+
+def load_myst_site_title(root: Path) -> str:
+    myst_path = root / "myst.yml"
+    if not myst_path.exists():
+        return "Home"
+    data = yaml.safe_load(myst_path.read_text(encoding="utf-8")) or {}
+    project = data.get("project", {})
+    title = project.get("title")
+    if isinstance(title, str) and title.strip():
+        return title.strip()
+    return "Home"
+
+
+def resolve_optional_asset(root: Path, value: object) -> Path | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    path = root / value
+    if path.exists() and path.is_file():
+        return path
+    return None
+
+
+def load_site_branding(root: Path) -> dict[str, str | None]:
+    data: dict[str, object] = {}
+    config_path = root / SITE_CONFIG_PATH.name
+    if config_path.exists():
+        loaded = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+        if isinstance(loaded, dict):
+            data = loaded
+
+    title = data.get("title")
+    if isinstance(title, str) and title.strip():
+        site_title = title.strip()
+    else:
+        site_title = load_myst_site_title(root)
+
+    logo_path = resolve_optional_asset(root, data.get("logo"))
+    favicon_path = resolve_optional_asset(root, data.get("favicon"))
+    return {
+        "title": site_title,
+        "logo_path": str(logo_path) if logo_path else None,
+        "favicon_path": str(favicon_path) if favicon_path else None,
+    }
+
+
+def stage_branding_assets(
+    build_root: Path, branding: dict[str, str | None]
+) -> dict[str, str | None]:
+    html_root = build_root / "_build" / "html"
+    branding_dir = html_root / "_branding"
+    branding_dir.mkdir(parents=True, exist_ok=True)
+
+    logo_src = branding.get("logo_path")
+    favicon_src = branding.get("favicon_path")
+    logo_href: str | None = None
+    favicon_href: str | None = None
+
+    if logo_src:
+        logo_source = Path(logo_src)
+        logo_target = branding_dir / f"logo{logo_source.suffix.lower()}"
+        shutil.copy2(logo_source, logo_target)
+        logo_href = f"/_branding/{logo_target.name}"
+
+    if favicon_src:
+        favicon_source = Path(favicon_src)
+        favicon_target = branding_dir / f"favicon{favicon_source.suffix.lower()}"
+        shutil.copy2(favicon_source, favicon_target)
+        favicon_href = f"/_branding/{favicon_target.name}"
+
+    return {
+        "title": branding.get("title"),
+        "logo_href": logo_href,
+        "favicon_href": favicon_href,
+    }
+
+
+def brand_html(site_title: str, logo_href: str | None) -> str:
+    title_html = '<span class="text-md sm:text-xl tracking-tight sm:mr-5">{}</span>'.format(
+        site_title
+    )
+    if not logo_href:
+        return title_html
+    return (
+        f'<img alt="{site_title}" src="{logo_href}" '
+        'class="h-8 w-auto mr-3 shrink-0" />'
+        f"{title_html}"
+    )
+
+
+def customize_site_branding(build_root: Path) -> None:
+    html_root = build_root / "_build" / "html"
+    branding = stage_branding_assets(build_root, load_site_branding(build_root))
+    site_title = branding.get("title") or "Home"
+    logo_href = branding.get("logo_href")
+    favicon_href = branding.get("favicon_href")
+    home_brand_html = brand_html(site_title, logo_href)
+    branding_script = f"""
+(() => {{
+  const siteTitle = {json.dumps(site_title)};
+  const homeBrandHtml = {json.dumps(home_brand_html)};
+  const applyBranding = () => {{
+    document.querySelectorAll("a.myst-home-link").forEach((link) => {{
+      if (link.innerHTML !== homeBrandHtml) {{
+        link.innerHTML = homeBrandHtml;
+      }}
+    }});
+
+    document.querySelectorAll("a.myst-made-with-myst").forEach((link) => {{
+      const footer = link.closest(".myst-primary-sidebar-footer");
+      link.remove();
+      if (footer && footer.textContent.trim() === "" && footer.children.length === 0) {{
+        footer.remove();
+      }}
+    }});
+  }};
+
+  const start = () => {{
+    applyBranding();
+    const observer = new MutationObserver(() => applyBranding());
+    observer.observe(document.documentElement, {{ childList: true, subtree: true }});
+    window.addEventListener("load", () => {{
+      window.setTimeout(() => observer.disconnect(), 5000);
+    }}, {{ once: true }});
+  }};
+
+  if (document.readyState === "loading") {{
+    document.addEventListener("DOMContentLoaded", start, {{ once: true }});
+  }} else {{
+    start();
+  }}
+}})();
+""".strip()
+
+    for html_path in html_root.rglob("*.html"):
+        html_text = html_path.read_text(encoding="utf-8")
+        soup = BeautifulSoup(html_text, "html.parser")
+        changed = False
+
+        for link in soup.select("a.myst-home-link"):
+            if str(link.decode_contents()) != home_brand_html:
+                link.clear()
+                brand_soup = BeautifulSoup(home_brand_html, "html.parser")
+                for child in brand_soup.contents:
+                    link.append(child)
+                changed = True
+
+        for myst_link in soup.select("a.myst-made-with-myst"):
+            footer = myst_link.find_parent(class_="myst-primary-sidebar-footer")
+            if footer is not None:
+                footer.decompose()
+            else:
+                myst_link.decompose()
+            changed = True
+
+        head = soup.head
+        if head is not None and soup.find("style", id="site-branding-overrides") is None:
+            style_tag = soup.new_tag("style", id="site-branding-overrides")
+            style_tag.string = (
+                "a.myst-made-with-myst{display:none!important;}"
+                ".myst-primary-sidebar-footer:empty{display:none!important;}"
+                ".myst-home-link img{display:block;}"
+            )
+            head.append(style_tag)
+            changed = True
+
+        if head is not None and favicon_href:
+            icon_link = soup.find("link", rel=lambda value: value and "icon" in value)
+            if icon_link is None:
+                icon_link = soup.new_tag("link", rel="icon")
+                head.append(icon_link)
+                changed = True
+            if icon_link.get("href") != favicon_href:
+                icon_link["href"] = favicon_href
+                changed = True
+
+        body = soup.body
+        if body is not None and soup.find("script", id="site-branding-script") is None:
+            script_tag = soup.new_tag("script", id="site-branding-script")
+            script_tag.string = branding_script
+            body.append(script_tag)
+            changed = True
+
+        if changed:
+            html_path.write_text(str(soup), encoding="utf-8")
 
 
 def strip_hidden_code_from_json(node: object) -> object | None:
@@ -256,6 +456,7 @@ def main() -> int:
         build_html(build_root, env)
         if not args.show_code:
             strip_hidden_code_from_notebook_pages(build_root)
+        customize_site_branding(build_root)
         sync_html_back(build_root)
 
     print(f"published: {REPO_ROOT / '_build' / 'html'}", flush=True)

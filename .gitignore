@@ -1,4 +1,5 @@
 _build/
 .npm-cache/
+.server/
 scripts/__pycache__/
 *.pyc

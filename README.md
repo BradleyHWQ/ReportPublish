@@ -14,8 +14,11 @@ python scripts/scaffold_entry.py weekly 2026-03-27
 # 或新增 project
 python scripts/scaffold_entry.py project MyProject
 
-# 一键发布
-bash scripts/build_and_serve.sh
+# 发布静态站点
+python3 scripts/publish.py
+
+# 第一次启动长期静态服务
+bash scripts/start_server.sh
 ```
 
 ---
@@ -48,12 +51,19 @@ It is not for running research, but for publishing research outputs.
 
 把 notebook 放进约定目录
 → 执行发布命令
+→ `_build/html` 更新
 → 网页刷新即可查看
 
 发布命令：
 
 ```id="k13rc9"
-bash scripts/build_and_serve.sh
+python3 scripts/publish.py
+```
+
+长期服务命令：
+
+```id="readme-server-start"
+bash scripts/start_server.sh
 ```
 
 ---
@@ -70,10 +80,16 @@ bash scripts/build_and_serve.sh
 │   └── overview.md
 ├── PUBLISHING.md
 ├── README.md
+├── site_assets
+│   └── README.md
+├── site_config.yml
 ├── scripts
 │   ├── build_and_serve.sh
 │   ├── publish.py
 │   ├── scaffold_entry.py
+│   ├── server_status.sh
+│   ├── start_server.sh
+│   ├── stop_server.sh
 │   └── update_toc.py
 └── weekly_discussion
     ├── 2026-03-26
@@ -98,6 +114,13 @@ Projects：
 projects/<project_name>/
 ```
 
+站点标题与图标：
+
+```id="readme-site-config"
+site_config.yml
+site_assets/
+```
+
 ---
 
 ## 5. 日常使用 | Usage
@@ -110,17 +133,26 @@ python scripts/scaffold_entry.py weekly 2026-03-27
 python scripts/scaffold_entry.py project MyProject
 
 # 发布
-bash scripts/build_and_serve.sh
+python3 scripts/publish.py
+
+# 如需显示 notebook 代码
+python3 scripts/publish.py --show-code
+
+# 第一次启动长期服务
+bash scripts/start_server.sh
 ```
 
 ---
 
 ## 6. 脚本说明 | Scripts
 
-* build_and_serve.sh：发布入口
-* publish.py：发布主逻辑
-* update_toc.py：更新导航
-* scaffold_entry.py：创建目录模板
+* build_and_serve.sh：一次性 build 并立即启动临时静态服务
+* publish.py：统一发布入口，负责扫描内容、补最小入口页、更新导航并 build
+* update_toc.py：扫描 `weekly_discussion/` 和 `projects/`，自动更新 `myst.yml`
+* scaffold_entry.py：创建新的 weekly/project 目录和最小 `index.md`
+* start_server.sh：长期托管 `_build/html`
+* stop_server.sh：停止长期静态服务
+* server_status.sh：查看长期静态服务状态
 
 ---
 
@@ -140,11 +172,11 @@ _build/html/
 
 * 基础站点结构
 * 一键发布流程
-* 自动目录生成
-
-待完成：
-
+* 自动目录扫描与导航生成
+* 最小入口页自动补齐
+* notebook 页面接入站点导航
 * 持久静态服务（局域网长期访问）
+* 站点标题与图标自定义入口
 
 ---
 

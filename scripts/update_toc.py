@@ -6,8 +6,11 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+import yaml
+
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+SITE_CONFIG_PATH = REPO_ROOT / "site_config.yml"
 AUTO_MARKER = "<!-- AUTO-GENERATED: scripts/update_toc.py -->"
 CONTENT_SUFFIXES = {".md", ".ipynb"}
 DEFAULT_PROJECT_ID = "8f251e0d-3ef1-446f-b54b-5921849eaec0"
@@ -45,9 +48,19 @@ def ensure_generated_or_missing(path: Path, content: str) -> bool:
     return write_generated(path, content)
 
 
-def parse_existing_project_meta() -> tuple[str, str]:
+def load_site_title() -> str:
+    if not SITE_CONFIG_PATH.exists():
+        return DEFAULT_TITLE
+    data = yaml.safe_load(read_text(SITE_CONFIG_PATH)) or {}
+    title = data.get("title")
+    if isinstance(title, str) and title.strip():
+        return title.strip()
+    return DEFAULT_TITLE
+
+
+def parse_existing_project_meta(site_title: str) -> tuple[str, str]:
     project_id = DEFAULT_PROJECT_ID
-    title = DEFAULT_TITLE
+    title = site_title
     myst_path = REPO_ROOT / "myst.yml"
     if not myst_path.exists():
         return project_id, title
@@ -57,7 +70,7 @@ def parse_existing_project_meta() -> tuple[str, str]:
     title_match = re.search(r"^\s*title:\s*(.+?)\s*$", text, re.MULTILINE)
     if id_match:
         project_id = id_match.group(1).strip().strip("'\"")
-    if title_match:
+    if title_match and site_title == DEFAULT_TITLE:
         title = title_match.group(1).strip().strip("'\"")
     return project_id, title
 
@@ -111,9 +124,9 @@ def project_entries() -> list[Path]:
     return sorted(entries, key=lambda p: p.name.lower())
 
 
-def render_generated_root_index() -> str:
+def render_generated_root_index(site_title: str) -> str:
     return f"""---
-title: {DEFAULT_TITLE}
+title: {site_title}
 ---
 {AUTO_MARKER}
 
@@ -178,9 +191,9 @@ def render_generated_entry_index(section: str, entry_dir: Path) -> str:
     return "\n".join(lines)
 
 
-def ensure_support_pages(weekly: list[Path], projects: list[Path]) -> list[str]:
+def ensure_support_pages(site_title: str, weekly: list[Path], projects: list[Path]) -> list[str]:
     touched: list[str] = []
-    if ensure_generated_or_missing(REPO_ROOT / "index.md", render_generated_root_index()):
+    if ensure_generated_or_missing(REPO_ROOT / "index.md", render_generated_root_index(site_title)):
         touched.append("index.md")
 
     weekly_overview = REPO_ROOT / "weekly_discussion" / "overview.md"
@@ -260,12 +273,13 @@ def render_myst(project_id: str, title: str, weekly: list[Path], projects: list[
 def update_toc() -> dict[str, list[str]]:
     weekly = weekly_entries()
     projects = project_entries()
+    site_title = load_site_title()
 
-    touched_pages = ensure_support_pages(weekly, projects)
+    touched_pages = ensure_support_pages(site_title, weekly, projects)
     touched_pages.extend(ensure_entry_indexes("weekly_discussion", weekly))
     touched_pages.extend(ensure_entry_indexes("projects", projects))
 
-    project_id, title = parse_existing_project_meta()
+    project_id, title = parse_existing_project_meta(site_title)
     myst_content = render_myst(project_id, title, weekly, projects)
     myst_changed = write_generated(REPO_ROOT / "myst.yml", myst_content)
 
