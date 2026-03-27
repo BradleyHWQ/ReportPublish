@@ -16,6 +16,8 @@ python scripts/scaffold_entry.py project MyProject
 
 # 一键发布
 bash scripts/build_and_serve.sh
+```
+
 1. 项目定位 | Project Purpose
 中文
 
